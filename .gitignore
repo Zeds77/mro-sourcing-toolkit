@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 运行产出
+output/*
+!output/.gitkeep
+*.xlsx
+!data/*.xlsx
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 敏感数据（真实报价不要提交）
+private/
