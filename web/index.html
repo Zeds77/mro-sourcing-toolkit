@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MRO 采购比价与供应商评估工具</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --card:#ffffff; --line:#e3e8ef; --text:#1f2937; --muted:#6b7280;
+    --brand:#1f4e79; --brand-2:#2e75b6; --ok:#1a7f37; --warn:#b45309; --bad:#b42318;
+    --chip:#eef2f7;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;font-size:14px;}
+  header{background:linear-gradient(120deg,#1f4e79,#2e75b6);color:#fff;padding:22px 28px;}
+  header h1{margin:0;font-size:20px;letter-spacing:.5px}
+  header p{margin:6px 0 0;font-size:12.5px;opacity:.85}
+  .wrap{max-width:1280px;margin:0 auto;padding:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px;
+        box-shadow:0 1px 3px rgba(16,24,40,.04)}
+  .card h2{margin:0 0 12px;font-size:15px;color:var(--brand);border-left:3px solid var(--brand-2);padding-left:8px}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  button{background:var(--brand);color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:13px}
+  button.sec{background:#fff;color:var(--brand);border:1px solid var(--brand-2)}
+  button:disabled{background:#9aa4b2;cursor:not-allowed}
+  button:hover:not(:disabled){filter:brightness(1.06)}
+  input[type=file]{font-size:13px}
+  .hint{color:var(--muted);font-size:12.5px;line-height:1.7}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .kpi{background:#fbfcfe;border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .kpi .k{color:var(--muted);font-size:12px}
+  .kpi .v{font-size:19px;font-weight:600;margin-top:4px;color:var(--brand)}
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .tab{padding:7px 14px;border:1px solid var(--line);background:#fff;border-radius:20px;cursor:pointer;font-size:13px;color:var(--muted)}
+  .tab.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{border:1px solid var(--line);padding:6px 8px;white-space:nowrap}
+  th{background:var(--brand);color:#fff;position:sticky;top:0;font-weight:600;text-align:center}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr:nth-child(even) td{background:#fafbfd}
+  .best{background:#e7f6ec!important;font-weight:600}
+  .warn{background:#fef6e7!important}
+  .bad{background:#fdeceb!important;color:var(--bad)}
+  .tag{display:inline-block;padding:1px 7px;border-radius:10px;background:var(--chip);font-size:11.5px}
+  .scroll{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:8px}
+  .grid-w{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .ctrl{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+  .ctrl input[type=range]{width:100%}
+  .ctrl b{color:var(--brand)}
+  footer{color:var(--muted);font-size:12px;text-align:center;padding:18px 0 30px}
+  .nowrap{white-space:normal;min-width:220px}
+</style>
+</head>
+<body>
+<header>
+  <h1>MRO 采购比价与供应商评估工具</h1>
+  <p>询价比价 · 供应商五维评分 · 合规优先校验 · ABC/EOQ 补货测算 —— 纯前端运行，数据不出本机</p>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <h2>① 数据来源</h2>
+    <div class="row">
+      <button id="btnDemo">加载内置示例数据</button>
+      <button class="sec" id="btnFile">上传报价表（.xlsx / .csv）</button>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none">
+      <button class="sec" id="btnTpl">下载空白模板</button>
+      <button class="sec" id="btnExport" disabled>导出 Excel 报告</button>
+      <span class="hint" id="srcHint">当前：未加载数据</span>
+    </div>
+    <p class="hint" style="margin-top:10px">
+      表头支持中英文混写，至少需包含：物料编码 / 物料名称 / 供应商 / 单价 / 需求数量。
+      可选字段：税率、是否含税、交期、最小起订量、运费、付款条件、质量评分、服务评分、资质合规、历史单价。
+      <b>历史单价请填不含税口径</b>，与比价主口径一致。
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>② 评分权重与规则</h2>
+    <div class="grid-w" id="weights"></div>
+    <div class="row" style="margin-top:12px">
+      <label class="hint"><input type="checkbox" id="certFirst" checked> 资质合规优先（资质不全的报价不参与最低价评选）</label>
+      <button class="sec" id="btnReset">恢复默认权重</button>
+      <span class="hint" id="wHint"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ 汇总看板</h2>
+    <div class="kpis" id="kpis"></div>
+  </div>
+
+  <div class="card">
+    <h2>④ 分析结果</h2>
+    <div class="tabs" id="tabs">
+      <div class="tab on" data-t="matrix">比价矩阵</div>
+      <div class="tab" data-t="detail">报价明细</div>
+      <div class="tab" data-t="advice">决策建议</div>
+      <div class="tab" data-t="score">供应商评分</div>
+    </div>
+    <div class="scroll" id="tableBox"><p class="hint">请先加载数据。</p></div>
+  </div>
+
+</div>
+
+<footer>
+  mro-sourcing-toolkit · 单文件前端版 · 逻辑与 Python CLI 完全一致（同口径、同权重）
+</footer>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<script>
+/* =========================================================================
+   核心计算逻辑（与 Python 包 mro/ 保持一致：同口径、同权重、同风险规则）
+   ========================================================================= */
+const ALIASES = {
+  item_code:["物料编码","物料编码/货号","编码","item_code","material","sku"],
+  item_name:["物料名称","品名","名称","item_name","material_name","name"],
+  category:["物料类别","品类","分类","category"],
+  spec:["规格型号","规格","型号","spec","model"],
+  unit:["单位","unit","uom"],
+  qty:["需求数量","数量","请购数量","qty","quantity"],
+  supplier:["供应商","供应商名称","报价单位","supplier","vendor"],
+  unit_price:["单价","报价单价","含税单价","unit_price","price"],
+  tax_rate:["税率","tax_rate","vat"],
+  tax_included:["是否含税","含税","tax_included"],
+  lead_time:["交期","交货期","交期(天)","交期天数","lead_time"],
+  moq:["最小起订量","起订量","moq"],
+  freight:["运费","运费(元)","freight","shipping"],
+  payment_terms:["付款条件","付款方式","账期","payment_terms"],
+  quality_score:["质量评分","质量得分","合格评分","quality_score"],
+  service_score:["服务评分","服务得分","响应评分","service_score"],
+  cert_ok:["资质合规","资质齐全","证照齐全","cert_ok","certified"],
+  history_price:["历史单价","历史单价(不含税)","目标价","上期单价","去年同期价","history_price","last_price"],
+  remark:["备注","remark","comment"]
+};
+const INDEX = {};
+for (const k in ALIASES) ALIASES[k].forEach(a => INDEX[a.toLowerCase().replace(/\s/g,"")] = k);
+
+const num = (v,d=0)=>{ if(v===null||v===undefined||v==="") return d;
+  const n = parseFloat(String(v).replace(/[,¥元%]/g,"")); return isNaN(n)?d:n; };
+const str = (v,d="")=> v===null||v===undefined ? d : String(v).trim();
+const bool = (v,d=true)=>{ if(v===null||v===undefined||v==="") return d;
+  const s=String(v).trim().toUpperCase();
+  if(["Y","YES","TRUE","1","是","有","齐全","√","V","OK"].includes(s)) return true;
+  if(["N","NO","FALSE","0","否","无","缺失","×","X"].includes(s)) return false;
+  return d; };
+
+function makeQuote(r){
+  const q = {
+    item_code:str(r.item_code), item_name:str(r.item_name), category:str(r.category),
+    spec:str(r.spec), unit:str(r.unit,"EA"), qty:num(r.qty), supplier:str(r.supplier),
+    unit_price:num(r.unit_price), tax_rate:num(r.tax_rate,0.13), tax_included:bool(r.tax_included,true),
+    lead_time:num(r.lead_time), moq:num(r.moq), freight:num(r.freight),
+    payment_terms:str(r.payment_terms), quality_score:num(r.quality_score,80),
+    service_score:num(r.service_score,80), cert_ok:bool(r.cert_ok,true),
+    history_price:num(r.history_price), remark:str(r.remark)
+  };
+  q.netUnit  = q.tax_included ? q.unit_price/(1+q.tax_rate) : q.unit_price;
+  q.grossUnit= q.tax_included ? q.unit_price : q.unit_price*(1+q.tax_rate);
+  q.orderQty = Math.max(q.qty, q.moq, 0);
+  q.goods    = q.netUnit*q.orderQty;
+  q.freightNet = q.freight/(1+q.tax_rate);
+  q.landed   = q.goods + q.freightNet;
+  q.landedUnit = q.orderQty>0 ? q.landed/q.orderQty : 0;
+  q.landedUnitGross = q.landedUnit*(1+q.tax_rate);
+  q.savingRate = q.history_price>0 ? (q.history_price-q.landedUnit)/q.history_price : null;
+  return q;
+}
+
+function compareItems(quotes, certFirst){
+  const groups = {};
+  quotes.forEach(q=>{ if(q.supplier && q.unit_price>0){
+    const key = q.item_code || q.item_name || q.supplier;
+    (groups[key] = groups[key]||[]).push(q); }});
+  const out = [];
+  for (const key in groups){
+    const valid = groups[key];
+    let pool = certFirst ? valid.filter(q=>q.cert_ok) : valid.slice();
+    if (!pool.length) pool = valid.slice();
+    const ranked = pool.slice().sort((a,b)=> a.landedUnit-b.landedUnit || a.lead_time-b.lead_time);
+    const shadow = valid.slice().sort((a,b)=> a.landedUnit-b.landedUnit || a.lead_time-b.lead_time)[0];
+    out.push({
+      item_code:valid[0].item_code, item_name:valid[0].item_name, spec:valid[0].spec,
+      unit:valid[0].unit, qty:Math.max(...valid.map(q=>q.qty)),
+      quotes:valid, ranked, best:ranked[0], second:ranked[1],
+      worst:ranked.length>1?ranked[ranked.length-1]:ranked[0], shadow_best:shadow
+    });
+  }
+  out.forEach(c=>{
+    c.supplierCount = new Set(c.quotes.map(q=>q.supplier)).size;
+    c.spread = c.best&&c.worst&&c.best.landedUnit>0 ? (c.worst.landedUnit-c.best.landedUnit)/c.best.landedUnit : 0;
+    c.gap2 = c.best&&c.second&&c.best.landedUnit>0 ? (c.second.landedUnit-c.best.landedUnit)/c.best.landedUnit : 0;
+    c.saveVsWorst = c.best&&c.worst ? c.worst.landed-c.best.landed : 0;
+    c.saveVsHist = c.best && c.best.history_price>0 ? (c.best.history_price-c.best.landedUnit)*c.best.orderQty : 0;
+    c.bestAmount = c.best?c.best.landed:0;
+    c.flags = riskFlags(c);
+    c.advice = advice(c);
+  });
+  return out.sort((a,b)=>String(a.item_code).localeCompare(String(b.item_code)));
+}
+
+function riskFlags(c){
+  const f=[];
+  if(c.supplierCount<=1) f.push("单一来源：建议开发备选供应商");
+  if(c.supplierCount===2 && c.gap2<0.02) f.push("两家报价接近：可按交期/服务分配份额");
+  if(c.spread>0.30) f.push("价差>30%：需复核规格与品牌是否一致");
+  if(c.shadow_best && c.best && c.shadow_best!==c.best && !c.shadow_best.cert_ok
+     && c.shadow_best.landedUnit < c.best.landedUnit){
+    const g=(c.best.landedUnit-c.shadow_best.landedUnit)/c.shadow_best.landedUnit;
+    f.push(`低价方【${c.shadow_best.supplier}】资质不全已被排除，合规优先多付 ${(g*100).toFixed(1)}%`);
+  }
+  if(c.best && !c.best.cert_ok) f.push("最低价供应商资质不全：合规优先，需排除或补充材料");
+  if(c.best && c.second && c.best.lead_time > c.second.lead_time*1.5) f.push("最低价交期明显偏长：需与需求部门确认");
+  if(c.best && c.qty>0 && c.best.moq > c.qty*1.2) f.push("起订量高于需求量：存在呆滞库存风险");
+  if(c.quotes.some(q=>["预付全款","款到发货"].includes(q.payment_terms))
+     && c.best && !["预付全款","款到发货"].includes(c.best.payment_terms))
+    f.push("存在要求预付的报价：优先选择账期结算以保现金流");
+  return f;
+}
+
+function advice(c){
+  if(!c.best) return "无有效报价，需重新询价";
+  if(!c.best.cert_ok && c.second) return `建议授予【${c.second.supplier}】：最低价方资质不全`;
+  if(c.shadow_best && c.shadow_best!==c.best && !c.shadow_best.cert_ok
+     && c.shadow_best.landedUnit < c.best.landedUnit)
+    return `建议授予【${c.best.supplier}】；同步要求【${c.shadow_best.supplier}】补齐资质后重新议价`;
+  if(c.supplierCount<=1) return `暂授【${c.best.supplier}】并同步开发第二货源`;
+  if(c.second && c.gap2<0.02) return `建议双源：【${c.best.supplier}】主供 / 【${c.second.supplier}】辅供`;
+  return `建议授予【${c.best.supplier}】`;
+}
+
+function scoreSuppliers(comps, W, certFirst){
+  const st={};
+  comps.forEach(c=>{
+    if(!c.best) return;
+    const bestPrice = Math.min(...c.quotes.filter(q=>q.landedUnit>0).map(q=>q.landedUnit));
+    c.quotes.forEach(q=>{
+      const s = st[q.supplier] = st[q.supplier] || {dev:[],lt:[],q:[],s:[],cert:[],amount:0,n:0,win:0,sav:[]};
+      if(bestPrice>0) s.dev.push((q.landedUnit-bestPrice)/bestPrice);
+      s.lt.push(q.lead_time); s.q.push(q.quality_score); s.s.push(q.service_score);
+      s.cert.push(q.cert_ok?1:0); s.amount+=q.landed; s.n++;
+      if(c.best.supplier===q.supplier) s.win++;
+      if(q.savingRate!==null) s.sav.push(q.savingRate);
+    });
+  });
+  const allLt=[].concat(...Object.values(st).map(x=>x.lt));
+  const lo=Math.min(...allLt), hi=Math.max(...allLt);
+  const avg=a=>a.length? a.reduce((x,y)=>x+y,0)/a.length : 0;
+  const scores=Object.keys(st).map(name=>{
+    const s=st[name];
+    const ltAvg=avg(s.lt);
+    const ltScore = hi>lo ? (1-(ltAvg-lo)/(hi-lo))*100 : 100;
+    const priceScore = Math.max(0, 100 - avg(s.dev)*100);
+    const certScore = avg(s.cert)*100;
+    let total = W.price*priceScore + W.lead_time*ltScore + W.quality*avg(s.q)
+              + W.service*avg(s.s) + W.cert*certScore;
+    if(certFirst && certScore<100) total*=0.85;
+    return {supplier:name, price:priceScore, lt:ltScore, quality:avg(s.q), service:avg(s.s),
+            cert:certScore, total, n:s.n, win:s.win, amount:s.amount, ltAvg,
+            sav:s.sav.length?avg(s.sav):null};
+  }).sort((a,b)=>b.total-a.total);
+
+  if(scores.length===1) scores[0].share=100;
+  else if(scores.length===2){
+    const g=scores[0].total-scores[1].total;
+    scores[0].share = g>=10?70:(g>=4?60:50); scores[1].share = 100-scores[0].share;
+  } else { scores[0].share=60; scores[1].share=30; scores[2].share=10;
+           for(let i=3;i<scores.length;i++) scores[i].share=0; }
+  scores.forEach((s,i)=>{
+    s.level = s.total>=85?"A级-战略供应商": s.total>=75?"B级-合格供应商":
+              s.total>=60?"C级-观察/整改":"D级-建议淘汰";
+    if(i===0) s.level+="（建议主供）";
+  });
+  return scores;
+}
+
+/* ---------------- 内置示例数据（与 Python scripts/make_sample_data.py 同源） ---------- */
+const ITEMS=[
+ ["MRO-1001","不锈钢球阀","阀门管件","DN50 304 法兰式","只",40,237.2],
+ ["MRO-1002","离心泵机械密封","泵阀备件","IH50-32-160 碳化硅","套",12,787.6],
+ ["MRO-1003","深沟球轴承","传动备件","6208-2RS","个",60,28.8],
+ ["MRO-1004","洁净室丁腈手套","劳保用品","M 号 无粉 100只/盒","盒",300,40.7],
+ ["MRO-1005","高效空气过滤器","暖通耗材","HEPA H13 610×610","片",24,1044.2],
+ ["MRO-1006","电力电缆","电气材料","YJV-0.6/1kV 3×4","米",800,10.44],
+ ["MRO-1007","无水乙醇","实验试剂","AR 500ml","瓶",120,16.37],
+ ["MRO-1008","工业乙二醇","化工辅料","工业级 220kg/桶","kg",2200,6.11],
+ ["MRO-1009","不锈钢压力表","仪器仪表","0-1.6MPa 径向","只",30,85.0],
+ ["MRO-1010","抗磨液压油","润滑油脂","46# 200L/桶","L",600,11.68],
+ ["MRO-1011","PP熔喷滤芯","过滤耗材","10寸 5μm","支",200,7.61],
+ ["MRO-1012","外六角螺栓","紧固件","M12×50 304","套",1500,2.08]
+];
+const SUP={
+ "华创工业物资":{lt:7,moq:0,freight:0,tax:0.13,incl:true,q:92,s:88,cert:true,pay:"月结30天"},
+ "瑞科供应链":{lt:15,moq:0.5,freight:180,tax:0.03,incl:false,q:88,s:90,cert:true,pay:"月结60天"},
+ "广联机电":{lt:5,moq:0,freight:0,tax:0.13,incl:true,q:95,s:82,cert:true,pay:"货到付款"},
+ "通达五金":{lt:20,moq:1,freight:260,tax:0,incl:true,q:76,s:70,cert:false,pay:"预付全款"}
+};
+const PF={
+ "阀门管件":{"华创工业物资":0.93,"瑞科供应链":1.05,"广联机电":1.02,"通达五金":0.95},
+ "泵阀备件":{"华创工业物资":1.04,"瑞科供应链":1.08,"广联机电":0.90,"通达五金":0.97},
+ "传动备件":{"华创工业物资":0.92,"瑞科供应链":1.10,"广联机电":0.98,"通达五金":0.88},
+ "劳保用品":{"华创工业物资":1.00,"瑞科供应链":1.02,"广联机电":1.09,"通达五金":0.84},
+ "暖通耗材":{"华创工业物资":1.06,"瑞科供应链":1.03,"广联机电":0.88,"通达五金":0.99},
+ "电气材料":{"华创工业物资":1.02,"瑞科供应链":1.06,"广联机电":0.91,"通达五金":0.96},
+ "实验试剂":{"华创工业物资":1.08,"瑞科供应链":0.89,"广联机电":1.12,"通达五金":0.92},
+ "化工辅料":{"华创工业物资":1.05,"瑞科供应链":0.86,"广联机电":1.15,"通达五金":0.90},
+ "仪器仪表":{"华创工业物资":0.94,"瑞科供应链":1.07,"广联机电":1.00,"通达五金":0.93},
+ "润滑油脂":{"华创工业物资":1.03,"瑞科供应链":0.88,"广联机电":1.10,"通达五金":0.94},
+ "过滤耗材":{"华创工业物资":1.01,"瑞科供应链":0.99,"广联机电":1.05,"通达五金":0.82},
+ "紧固件":{"华创工业物资":1.07,"瑞科供应链":1.01,"广联机电":1.11,"通达五金":0.80}
+};
+function demoRows(){
+  const header=["物料编码","物料名称","物料类别","规格型号","单位","需求数量","供应商","单价",
+                "税率","是否含税","交期","最小起订量","运费","付款条件","质量评分","服务评分","资质合规","历史单价","备注"];
+  const rows=[header];
+  ITEMS.forEach((it,idx)=>{
+    const [code,name,cat,spec,unit,qty,hist]=it;
+    const f=PF[cat]||{};
+    for(const sup in SUP){
+      const c=SUP[sup];
+      const gross=hist*(f[sup]||1);
+      const price=c.incl? gross : gross/(1+c.tax);
+      const moq=Math.round(qty*c.moq/10)*10;
+      rows.push([code,name,cat,spec,unit,qty,sup,+price.toFixed(2),c.tax,c.incl?"是":"否",
+                 c.lt,moq,(qty*gross<20000?c.freight:0),c.pay,c.q+(idx%3),c.s-(idx%4),
+                 c.cert?"是":"否",hist, c.cert?"":"营业执照与危化品经营资质待补充"]);
+    }
+  });
+  return rows;
+}
+
+/* ============================ 界面逻辑 ============================ */
+const DEFAULT_W={price:.35,lead_time:.20,quality:.20,service:.15,cert:.10};
+const W_LABEL={price:"价格竞争力",lead_time:"交期表现",quality:"质量水平",service:"服务响应",cert:"资质合规"};
+let W={...DEFAULT_W}, RAW=[], COMPS=[], SCORES=[], QUOTES=[], currentTab="matrix";
+
+function buildWeightUI(){
+  const box=document.getElementById("weights"); box.innerHTML="";
+  Object.keys(DEFAULT_W).forEach(k=>{
+    const d=document.createElement("div"); d.className="ctrl";
+    d.innerHTML=`<label>${W_LABEL[k]} <b id="wv_${k}">${(W[k]*100).toFixed(0)}%</b></label>
+                 <input type="range" min="0" max="60" step="5" value="${W[k]*100}" data-w="${k}">`;
+    box.appendChild(d);
+  });
+  box.querySelectorAll("input").forEach(inp=>inp.addEventListener("input",e=>{
+    W[e.target.dataset.w]=+e.target.value/100;
+    document.getElementById("wv_"+e.target.dataset.w).textContent=e.target.value+"%";
+    const t=Object.values(W).reduce((a,b)=>a+b,0);
+    document.getElementById("wHint").textContent = Math.abs(t-1)<1e-6
+      ? "权重合计 100%" : `权重合计 ${(t*100).toFixed(0)}%（计算时会自动归一化）`;
+    if(RAW.length) run();
+  }));
+}
+
+function parseRows(matrix){
+  if(!matrix || !matrix.length) return [];
+  const header=matrix[0].map(h=>INDEX[str(h).toLowerCase().replace(/\s/g,"")]);
+  const out=[];
+  for(let i=1;i<matrix.length;i++){
+    const rec={}; let any=false;
+    header.forEach((c,j)=>{ if(!c) return; const v=matrix[i][j];
+      if(v!==undefined&&v!==null&&str(v)!=="") any=true; rec[c]=v; });
+    if(any) out.push(rec);
+  }
+  return out;
+}
+
+function run(){
+  const certFirst=document.getElementById("certFirst").checked;
+  const tw=Object.values(W).reduce((a,b)=>a+b,0)||1;
+  const wn=Object.fromEntries(Object.keys(W).map(k=>[k,W[k]/tw]));
+
+  QUOTES=RAW.map(makeQuote).filter(q=>q.supplier && q.unit_price>=0);
+  COMPS=compareItems(QUOTES,certFirst);
+  SCORES=scoreSuppliers(COMPS,wn,certFirst);
+  renderKpis(); renderTable();
+  document.getElementById("btnExport").disabled=false;
+}
+
+function renderKpis(){
+  const totalBest=COMPS.reduce((a,c)=>a+c.bestAmount,0);
+  const totalWorst=COMPS.reduce((a,c)=>a+(c.worst?c.worst.landed:0),0);
+  const saveHist=COMPS.reduce((a,c)=>a+c.saveVsHist,0);
+  const histBase=COMPS.reduce((a,c)=>a+(c.best&&c.best.history_price>0?c.best.history_price*c.best.orderQty:0),0);
+  const single=COMPS.filter(c=>c.supplierCount<=1).length;
+  const risky=COMPS.filter(c=>c.flags.length).length;
+  const kpi=(k,v)=>`<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  document.getElementById("kpis").innerHTML=
+    kpi("物料数",COMPS.length) +
+    kpi("报价条目 / 供应商", `${QUOTES.length} / ${new Set(QUOTES.map(q=>q.supplier)).size}`) +
+    kpi("选定总金额(不含税)", "¥"+totalBest.toLocaleString("zh-CN",{maximumFractionDigits:0})) +
+    kpi("比价节约金额", "¥"+(totalWorst-totalBest).toLocaleString("zh-CN",{maximumFractionDigits:0})) +
+    kpi("比价节约率", totalWorst?((totalWorst-totalBest)/totalWorst*100).toFixed(2)+"%":"-") +
+    kpi("历史降本率", histBase?(saveHist/histBase*100).toFixed(2)+"%":"-") +
+    kpi("单一来源物料", single) +
+    kpi("存在风险提示", risky);
+}
+
+const fmt=(v,d=4)=> v===null||v===undefined||v===""?"": (typeof v==="number"
+  ? v.toLocaleString("zh-CN",{minimumFractionDigits:d,maximumFractionDigits:d}) : v);
+
+function tableHTML(cols,rows,clsFn){
+  let h="<table><thead><tr>";
+  cols.forEach(c=>h+=`<th>${c}</th>`); h+="</tr></thead><tbody>";
+  rows.forEach((r,i)=>{
+    const cls=clsFn?clsFn(r):"";
+    h+=`<tr class="${cls}">`;
+    cols.forEach(c=>{ const v=r[c];
+      h+=`<td class="${typeof v==="number"?"num":""}">${typeof v==="number"?fmt(v,Math.abs(v)<100?4:2):(v??"")}</td>`;});
+    h+="</tr>";
+  });
+  return h+"</tbody></table>";
+}
+
+function renderTable(){
+  const t=currentTab, box=document.getElementById("tableBox");
+  if(!COMPS.length){ box.innerHTML='<p class="hint">请先加载数据。</p>'; return; }
+  if(t==="matrix"){
+    const sups=[...new Set(QUOTES.map(q=>q.supplier))].sort();
+    const cols=["物料编码","物料名称","规格型号","单位","需求数量","报价家数",...sups,
+                "最优供应商","最优到货单价","价差率","建议"];
+    const rows=COMPS.map(c=>{
+      const r={"物料编码":c.item_code,"物料名称":c.item_name,"规格型号":c.spec,"单位":c.unit,
+               "需求数量":c.qty,"报价家数":c.supplierCount};
+      sups.forEach(s=>{ const q=c.quotes.find(x=>x.supplier===s); r[s]=q?q.landedUnit:null; });
+      r["最优供应商"]=c.best?c.best.supplier:"";
+      r["最优到货单价"]=c.best?c.best.landedUnit:null;
+      r["价差率"]=c.spread;
+      r["建议"]=c.advice;
+      r._best=c.best?c.best.supplier:"";
+      r._min=Math.min(...c.quotes.map(q=>q.landedUnit).filter(x=>x>0));
+      return r;
+    });
+    box.innerHTML=tableHTML(cols,rows,()=>"");
+    // 标出每行的价格最优单元格
+    const trs=box.querySelectorAll("tbody tr");
+    trs.forEach((tr,i)=>{
+      const r=rows[i];
+      tr.querySelectorAll("td").forEach(td=>{
+        const idx=[...tr.children].indexOf(td);
+        const col=cols[idx];
+        if(sups.includes(col) && r[col]!==null && Math.abs(r[col]-r._min)<1e-9) td.className="num best";
+      });
+    });
+  } else if(t==="detail"){
+    const cols=["物料编码","物料名称","物料类别","供应商","报价单价","税率","是否含税","不含税单价",
+                "实际下单量","运费(含税)","到货总成本(不含税)","到货等效单价(不含税)","交期(天)",
+                "起订量","付款条件","资质合规","历史单价","降本率"]
+    const rows=[];
+    COMPS.forEach(c=>c.quotes.forEach(q=>{
+      rows.push({"物料编码":q.item_code,"物料名称":q.item_name,"物料类别":q.category,"供应商":q.supplier,
+        "报价单价":q.unit_price,"税率":q.tax_rate,"是否含税":q.tax_included?"是":"否",
+        "不含税单价":q.netUnit,"实际下单量":q.orderQty,"运费(含税)":q.freight,
+        "到货总成本(不含税)":q.landed,"到货等效单价(不含税)":q.landedUnit,"交期(天)":q.lead_time,
+        "起订量":q.moq,"付款条件":q.payment_terms,"资质合规":q.cert_ok?"是":"否",
+        "历史单价":q.history_price||null,"降本率":q.savingRate,
+        _isBest: q===c.best, _cert:q.cert_ok});
+    }));
+    box.innerHTML=tableHTML(cols,rows,r=> r._isBest?"best":(r._cert?"":"bad"));
+  } else if(t==="advice"){
+    const cols=["物料编码","物料名称","最优供应商","最优到货单价(不含税)","价差率","与次低价差",
+                "比最高价节约","相对历史价节约","风险提示","建议"];
+    const rows=COMPS.map(c=>({"物料编码":c.item_code,"物料名称":c.item_name,
+      "最优供应商":c.best?c.best.supplier:"","最优到货单价(不含税)":c.best?c.best.landedUnit:null,
+      "价差率":c.spread,"与次低价差":c.gap2,"比最高价节约":c.saveVsWorst,"相对历史价节约":c.saveVsHist,
+      "风险提示":c.flags.join("；"),"建议":c.advice,_f:c.flags.length}));
+    box.innerHTML=tableHTML(cols,rows,r=>r._f?"warn":"");
+  } else {
+    const cols=["排名","供应商","综合得分","价格分","交期分","质量分","服务分","资质分",
+                "报价条目数","低价命中数","平均交期(天)","覆盖金额(不含税)","平均降本率","建议份额(%)","等级"];
+    const rows=SCORES.map((s,i)=>({"排名":i+1,"供应商":s.supplier,"综合得分":s.total,"价格分":s.price,
+      "交期分":s.lt,"质量分":s.quality,"服务分":s.service,"资质分":s.cert,"报价条目数":s.n,
+      "低价命中数":s.win,"平均交期(天)":s.ltAvg,"覆盖金额(不含税)":s.amount,"平均降本率":s.sav,
+      "建议份额(%)":s.share,"等级":s.level,_lv:s.total}));
+    box.innerHTML=tableHTML(cols,rows,r=> r._lv>=85?"best":(r._lv<60?"bad":""));
+  }
+}
+
+/* ------------------------- 文件与导出 ------------------------- */
+function loadMatrix(matrix,label){
+  RAW=parseRows(matrix);
+  document.getElementById("srcHint").textContent="当前："+label+`（${RAW.length} 条记录）`;
+  if(!RAW.length){ document.getElementById("srcHint").textContent="未识别到有效数据，请检查表头。"; return; }
+  run();
+}
+
+document.getElementById("btnDemo").onclick=()=>loadMatrix(demoRows(),"内置示例数据（医药化工 MRO 季度询价）");
+
+document.getElementById("btnFile").onclick=()=>document.getElementById("file").click();
+document.getElementById("file").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:f.name.endsWith(".csv")?"string":"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      loadMatrix(XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true}), f.name);
+    }catch(err){ document.getElementById("srcHint").textContent="解析失败："+err.message; }
+  };
+  if(f.name.endsWith(".csv")) rd.readAsText(f,"utf-8"); else rd.readAsArrayBuffer(f);
+};
+
+document.getElementById("btnTpl").onclick=()=>{
+  const header=["物料编码","物料名称","物料类别","规格型号","单位","需求数量","供应商","单价","税率",
+                "是否含税","交期","最小起订量","运费","付款条件","质量评分","服务评分","资质合规","历史单价","备注"];
+  const sample=["MRO-0001","示例物料","备品备件","DN50","EA",100,"供应商A",88.5,0.13,"是",7,10,0,
+                "月结30天",90,85,"是",92,""];
+  const ws=XLSX.utils.aoa_to_sheet([header,sample]);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"报价明细");
+  XLSX.writeFile(wb,"mro_quotes_template.xlsx");
+};
+
+document.getElementById("btnExport").onclick=()=>{
+  const wb=XLSX.utils.book_new();
+  const sups=[...new Set(QUOTES.map(q=>q.supplier))].sort();
+
+  const kpi=[]; document.querySelectorAll("#kpis .kpi").forEach(k=>
+    kpi.push([k.querySelector(".k").textContent, k.querySelector(".v").textContent]));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["指标","数值"]].concat(kpi)),"① 汇总看板");
+
+  const mHead=["物料编码","物料名称","规格型号","单位","需求数量","报价家数",...sups,
+               "最优供应商","最优到货单价","价差率","风险提示","建议"];
+  const mRows=COMPS.map(c=>{
+    const line=[c.item_code,c.item_name,c.spec,c.unit,c.qty,c.supplierCount];
+    sups.forEach(s=>{const q=c.quotes.find(x=>x.supplier===s); line.push(q?q.landedUnit:null);});
+    line.push(c.best?c.best.supplier:"", c.best?c.best.landedUnit:null, c.spread,
+              c.flags.join("；"), c.advice);
+    return line;});
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([mHead].concat(mRows)),"② 比价矩阵");
+
+  const dHead=["物料编码","物料名称","物料类别","供应商","报价单价","税率","是否含税","不含税单价",
+               "实际下单量","运费(含税)","到货总成本(不含税)","到货等效单价(不含税)","交期(天)",
+               "起订量","付款条件","资质合规","历史单价","降本率"];
+  const dRows=[];
+  COMPS.forEach(c=>c.quotes.forEach(q=>dRows.push([q.item_code,q.item_name,q.category,q.supplier,
+    q.unit_price,q.tax_rate,q.tax_included?"是":"否",q.netUnit,q.orderQty,q.freight,q.landed,
+    q.landedUnit,q.lead_time,q.moq,q.payment_terms,q.cert_ok?"是":"否",q.history_price||null,
+    q.savingRate])));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([dHead].concat(dRows)),"③ 报价明细");
+
+  const sHead=["排名","供应商","综合得分","价格分","交期分","质量分","服务分","资质分","报价条目数",
+               "低价命中数","平均交期(天)","覆盖金额(不含税)","平均降本率","建议份额(%)","等级"];
+  const sRows=SCORES.map((s,i)=>[i+1,s.supplier,s.total,s.price,s.lt,s.quality,s.service,s.cert,
+    s.n,s.win,s.ltAvg,s.amount,s.sav,s.share,s.level]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([sHead].concat(sRows)),"④ 供应商评分");
+
+  const aHead=["物料编码","物料名称","最优供应商","最优到货单价(不含税)","价差率","与次低价差",
+               "比最高价节约","相对历史价节约","风险提示","建议"];
+  const aRows=COMPS.map(c=>[c.item_code,c.item_name,c.best?c.best.supplier:"",
+    c.best?c.best.landedUnit:null,c.spread,c.gap2,c.saveVsWorst,c.saveVsHist,c.flags.join("；"),c.advice]);
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([aHead].concat(aRows)),"⑤ 决策建议");
+
+  XLSX.writeFile(wb,"MRO比价与供应商评估报告.xlsx");
+};
+
+document.getElementById("btnReset").onclick=()=>{ W={...DEFAULT_W}; buildWeightUI();
+  document.getElementById("wHint").textContent="已恢复默认权重"; if(RAW.length) run(); };
+document.getElementById("certFirst").onchange=()=>{ if(RAW.length) run(); };
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));
+  t.classList.add("on"); currentTab=t.dataset.t; renderTable();
+});
+
+buildWeightUI();
+loadMatrix(demoRows(),"内置示例数据（医药化工 MRO 季度询价）");
+</script>
+</body>
+</html>
